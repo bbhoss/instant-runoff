@@ -2,6 +2,7 @@ module Lib
   (
     Ballot(..),
     Candidate(..),
+    Winner(..),
     tally,
   ) where
 
@@ -10,17 +11,42 @@ import Data.Ord
 
 newtype Candidate = Candidate {name :: String} deriving (Show, Eq)
 newtype Ballot = Ballot { votes :: [Candidate] }
+data Winner = Winner { candidate :: Candidate } | Tie deriving (Show, Eq) -- TODO: implement n-way Tie
 type Election = [Ballot]
 type CandidateTally = (Candidate, Int)
-type ElectionResult = [CandidateTally]
+type ElectionRound = [CandidateTally]
+type FinalElectionResult = (Winner, [ElectionRound])
 
-tally :: Election -> ElectionResult
+tally :: Election -> FinalElectionResult
+tally [] = (Tie, [])
 tally e =
-  sortOn (Data.Ord.Down . voteCount) talliedResults
+  case (leader, second) of
+    ((leaderCd, leaderVotes), (sndCd, sndVotes)) | leaderVotes == sndVotes -> (Tie, completedTabulation)
+    ((leaderCd, _), _) -> (Winner{candidate=leaderCd}, completedTabulation)
+  where
+    completedTabulation = tallyRound e []
+    finalRoundResults = head completedTabulation
+    (leader:(second:_)) = finalRoundResults
+
+tallyRound :: [Ballot] -> [ElectionRound] -> [ElectionRound]
+tallyRound e priorRounds =
+  case sortedResults of
+    results | leaderVotes >= requiredForMajorityCount -> results:priorRounds
+    results -> tallyRound redistributedBallots (results:priorRounds)
   where
     talliedResults = countBallots e []
+    sortedResults = sortOn (Data.Ord.Down . latestRoundVoteCount) talliedResults
+    totalVotes = sum (map latestRoundVoteCount sortedResults)
+    requiredForMajorityCount = ceiling (fromIntegral totalVotes * 0.5)
+    (leader,_) = head sortedResults
+    leaderVotes = latestRoundVoteCount (head sortedResults)
+    ((worstLoser,_):losers) = reverse (tail sortedResults)
+    worstLoserBallots = filter (isVoteForCandidate worstLoser) e
+    worstLoserRemovedBallots = filter (not . isVoteForCandidate worstLoser) e
+    loserEliminatedBallots = eliminateLoserVotes worstLoser worstLoserBallots
+    redistributedBallots = loserEliminatedBallots ++ worstLoserRemovedBallots
 
-countBallots :: Election -> ElectionResult -> ElectionResult
+countBallots :: Election -> ElectionRound -> ElectionRound
 countBallots [] runningTally = runningTally
 countBallots (Ballot{votes=(firstCandidateVote:_)}:ballots) runningTally =
   case findCandidateResult firstCandidateVote runningTally of
@@ -29,12 +55,24 @@ countBallots (Ballot{votes=(firstCandidateVote:_)}:ballots) runningTally =
     where
       filteredRunningTally = filter (not . isCandidateTally firstCandidateVote) runningTally
 
-
-findCandidateResult :: Candidate -> ElectionResult -> Maybe CandidateTally
+findCandidateResult :: Candidate -> ElectionRound -> Maybe CandidateTally
 findCandidateResult candidate = find (isCandidateTally candidate)
 
 isCandidateTally :: Candidate -> CandidateTally -> Bool
 isCandidateTally soughtCandidate (candidate, _) = soughtCandidate == candidate
 
-voteCount :: CandidateTally -> Int
-voteCount (_, count) = count
+latestRoundVoteCount :: CandidateTally -> Int
+latestRoundVoteCount (_, count) = count
+
+isVoteForCandidate :: Candidate -> Ballot -> Bool
+isVoteForCandidate candidate ballot = head (votes ballot) == candidate
+
+eliminateLoserVotes :: Candidate -> [Ballot] -> [Ballot]
+eliminateLoserVotes loser loserBallots =
+  nullBallotsRemoved
+  where
+    loserRemoved = map eliminateHighestVote loserBallots
+    nullBallotsRemoved = filter (not . null . votes) loserRemoved
+
+eliminateHighestVote :: Ballot -> Ballot
+eliminateHighestVote Ballot{votes=(_:remaining)} = Ballot{votes=remaining}
