@@ -8,28 +8,32 @@ module Lib
 
 import Data.List
 import Data.Ord
-import Debug.Trace
 
 newtype Candidate = Candidate {name :: String} deriving (Show, Eq)
 newtype Ballot = Ballot { votes :: [Candidate] }
-data Winner = Winner { candidate :: Candidate } | Tie deriving (Show, Eq)
+data Winner = Winner { candidate :: Candidate } | Tie deriving (Show, Eq) -- TODO: implement n-way Tie
 type Election = [Ballot]
-type CandidateTally = (Candidate, [Int])
-type ElectionRounds = [CandidateTally]
-type FinalElectionResult = (Winner, ElectionRounds)
+type CandidateTally = (Candidate, Int)
+type ElectionRound = [CandidateTally]
+type FinalElectionResult = (Winner, [ElectionRound])
 
 tally :: Election -> FinalElectionResult
 tally [] = (Tie, [])
-tally e = tallyRound e []
+tally e =
+  case (leader, second) of
+    ((leaderCd, leaderVotes), (sndCd, sndVotes)) | leaderVotes == sndVotes -> (Tie, completedTabulation)
+    ((leaderCd, _), _) -> (Winner{candidate=leaderCd}, completedTabulation)
+  where
+    completedTabulation = tallyRound e []
+    finalRoundResults = head completedTabulation
+    (leader:(second:_)) = finalRoundResults
 
-tallyRound :: Election -> ElectionRounds -> FinalElectionResult
+-- (Winner {candidate=leader}, 
+tallyRound :: [Ballot] -> [ElectionRound] -> [ElectionRound]
 tallyRound e priorRounds =
   case sortedResults of
-    results | leaderVotes >= requiredForMajorityCount -> (Winner {candidate=leader}, results)
-    results -> tallyRound redistributedBallots results
-    -- results | length losers == 0 -> --  If there are two continuing candidates, the candidate with the most votes shall be declared the nominee of his or her party for a primary election, or elected winner for an election for which nominations were made by independent nominating petitions.
-    -- results 
-    -- results -> trace ("IRV condition detected"++ show results) results
+    results | leaderVotes >= requiredForMajorityCount -> results:priorRounds
+    results -> tallyRound redistributedBallots (results:priorRounds)
   where
     talliedResults = countBallots e []
     sortedResults = sortOn (Data.Ord.Down . latestRoundVoteCount) talliedResults
@@ -45,24 +49,24 @@ tallyRound e priorRounds =
 
 
 
-countBallots :: Election -> ElectionRounds -> ElectionRounds
+countBallots :: Election -> ElectionRound -> ElectionRound
 countBallots [] runningTally = runningTally
 countBallots (Ballot{votes=(firstCandidateVote:_)}:ballots) runningTally =
   case findCandidateResult firstCandidateVote runningTally of
-    Nothing -> countBallots ballots ((firstCandidateVote, [1]):filteredRunningTally)
-    Just (firstCandidateVote, latestRoundVotes:priorRounds) -> countBallots ballots ((firstCandidateVote, latestRoundVotes+1:priorRounds):filteredRunningTally)
+    Nothing -> countBallots ballots ((firstCandidateVote, 1):filteredRunningTally)
+    Just (firstCandidateVote, votes) -> countBallots ballots ((firstCandidateVote, votes+1):filteredRunningTally)
     where
       filteredRunningTally = filter (not . isCandidateTally firstCandidateVote) runningTally
 
 
-findCandidateResult :: Candidate -> ElectionRounds -> Maybe CandidateTally
+findCandidateResult :: Candidate -> ElectionRound -> Maybe CandidateTally
 findCandidateResult candidate = find (isCandidateTally candidate)
 
 isCandidateTally :: Candidate -> CandidateTally -> Bool
 isCandidateTally soughtCandidate (candidate, _) = soughtCandidate == candidate
 
 latestRoundVoteCount :: CandidateTally -> Int
-latestRoundVoteCount (_, count:_) = count
+latestRoundVoteCount (_, count) = count
 
 isVoteForCandidate :: Candidate -> Ballot -> Bool
 isVoteForCandidate candidate ballot = head (votes ballot) == candidate
