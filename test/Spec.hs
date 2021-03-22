@@ -10,7 +10,7 @@ main = hspec $ do
     it "returns the candidates with their first round vote tallies" $ do
       tally simpleMajorityPreston `shouldBe` (Winner {candidate=preston}, [[(preston, 3), (hannah, 1)]])
     it "redistributes votes from losing candidates when no candidate has a majority" $ do
-      tally instantRunoffPreston `shouldBe` (Winner {candidate=preston}, [[(preston, 4), (hannah, 3)], [(preston, 3), (hannah, 3), (ruby, 1)]])
+      tally instantRunoffPreston `shouldBe` (Winner {candidate=preston}, [[(preston, 4), (hannah, 3)], [(preston, 3), (hannah, 3), (ruby, 1)]]) -- TODO: Don't expect deterministic tie ordering
 -- TODO: test for Tie
 preston = Candidate "Preston"
 hannah = Candidate "Hannah"
