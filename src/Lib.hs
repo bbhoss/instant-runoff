@@ -19,20 +19,18 @@ type FinalElectionResult = (Winner, [ElectionRound])
 
 tally :: Election -> FinalElectionResult
 tally [] = (Tie, [])
-tally e =
-  case (leader, second) of
-    ((leaderCd, leaderVotes), (sndCd, sndVotes)) | leaderVotes == sndVotes -> (Tie, completedTabulation)
-    ((leaderCd, _), _) -> (Winner{candidate=leaderCd}, completedTabulation)
+tally e
+  | leaderVotes == sndVotes = (Tie, completedTabulation)
+  | otherwise = (Winner{candidate=leaderCd}, completedTabulation)
   where
     completedTabulation = tallyRound e []
     finalRoundResults = head completedTabulation
-    (leader:(second:_)) = finalRoundResults
+    (leaderCd, leaderVotes):(sndCd, sndVotes):_ = finalRoundResults
 
 tallyRound :: [Ballot] -> [ElectionRound] -> [ElectionRound]
-tallyRound e priorRounds =
-  case sortedResults of
-    results | leaderVotes >= requiredForMajorityCount -> results:priorRounds
-    results -> tallyRound redistributedBallots (results:priorRounds)
+tallyRound e priorRounds
+  | leaderVotes >= requiredForMajorityCount = sortedResults:priorRounds
+  | otherwise = tallyRound redistributedBallots (sortedResults:priorRounds)
   where
     talliedResults = countBallots e []
     sortedResults = sortOn (Data.Ord.Down . latestRoundVoteCount) talliedResults
